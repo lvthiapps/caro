@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cờ Caro Ghi Chú Trong Suốt</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=Pacifico&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Mặc định là Giao diện Sáng (Giống trang giấy ghi chú) */
+        :root {
+            --bg-color: #f0f4f8;
+            --cell-bg: #ffffff;
+            --cell-hover: #e2e8f0;
+            --grid-line: #cbd5e1; /* Màu đường kẻ ô li */
+            --text-color: #0f172a;
+            --primary-color: #3b82f6;
+            --player-x: #0284c7;
+            --player-o: #e11d48;
+            --win-bg: #22c55e;
+            --border-btn: #94a3b8;
+            /* Biến cho hiệu ứng Kính trong suốt (Glassmorphism) */
+            --glass-bg: rgba(255, 255, 255, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --glass-shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        /* Giao diện Tối */
+        .dark-theme {
+            --bg-color: #0b1120;
+            --cell-bg: #0f172a;
+            --cell-hover: #1e293b;
+            --grid-line: #334155;
+            --text-color: #f8fafc;
+            --primary-color: #2563eb;
+            --player-x: #38bdf8;
+            --player-o: #f43f5e;
+            --border-btn: #475569;
+            --glass-bg: rgba(15, 23, 42, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --glass-shadow: rgba(0, 0, 0, 0.4);
+        }
+
+        body, html {
+            font-family: 'Nunito', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden; /* Vô hiệu hóa cuộn toàn trang để dùng cuộn riêng của bàn cờ */
+            overscroll-behavior: none; /* Chống hiệu ứng kéo nảy (pull-to-refresh) trên mobile */
+            transition: background-color 0.3s;
+        }
+
+        /* Bảng điều khiển nổi (Glassmorphism) */
+        .glass-panel {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            max-width: 650px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px); /* Hiệu ứng làm mờ nền phía sau */
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px var(--glass-shadow);
+            border-radius: 20px;
+            padding: 15px 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            box-sizing: border-box;
+            transition: all 0.3s;
+        }
+
+        .panel-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .brand h1 {
+            font-family: 'Pacifico', cursive;
+            margin: 0;
+            font-size: 1.8rem;
+            line-height: 1;
+        }
+
+        .score-box {
+            display: flex;
+            gap: 20px;
+            font-weight: 800;
+            font-size: 1.2rem;
+        }
+
+        .score-box span { font-family: 'Pacifico', cursive; font-size: 1.4rem; font-weight: normal; }
+        .x-text { color: var(--player-x); }
+        .o-text { color: var(--player-o); }
+
+        .status { font-weight: 600; font-size: 1.1rem; }
+
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        button {
+            font-family: 'Nunito', sans-serif;
+            background-color: transparent;
+            color: var(--text-color);
+            border: 1px solid var(--border-btn);
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(4px);
+        }
+
+        button:hover { background-color: var(--cell-hover); }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .btn-primary:hover { background-color: #2563eb; }
+
+        /* Vùng chứa bàn cờ: Cho phép lướt/pan như xem bản đồ */
+        .board-container {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            overflow: auto;
+            /* Đệm khoảng trống ở trên để các ô cờ không bị bảng panel che vĩnh viễn khi cuộn lên kịch trần */
+            padding: 140px 20px 60px 20px; 
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Ẩn thanh cuộn cho giống tờ giấy tinh khiết */
+        .board-container::-webkit-scrollbar { display: none; }
+        .board-container { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Bàn cờ */
+        .board {
+            display: grid;
+            /* Cố định giới hạn co giãn, tạo ra các ô vuông tuyệt đối. Sẽ tràn màn hình trên mobile để cho phép cuộn */
+            grid-template-columns: repeat(25, clamp(35px, 4vw, 55px));
+            grid-template-rows: repeat(25, clamp(35px, 4vw, 55px));
+            gap: 1px; 
+            background-color: var(--grid-line); 
+            border: 1px solid var(--grid-line);
+            margin: auto; /* Căn giữa nếu màn hình lớn hơn bàn cờ */
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+
+        .cell {
+            background-color: var(--cell-bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Pacifico', cursive;
+            font-size: clamp(20px, 2.5vw, 36px);
+            line-height: 1;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.15s;
+        }
+
+        .cell:hover { background-color: var(--cell-hover); }
+        .cell.win { background-color: var(--win-bg) !important; color: white !important; }
+
+        @media (max-width: 600px) {
+            .glass-panel { padding: 12px 15px; }
+            .brand h1 { font-size: 1.5rem; }
+            .score-box { font-size: 1rem; gap: 12px;}
+            button { padding: 6px 12px; font-size: 0.8rem; }
+            .board-container { padding-top: 150px; } /* Nhường chỗ cho panel bị đẩy xuống nhiều dòng trên mobile */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Panel Nổi 50% trong suốt -->
+    <div class="glass-panel">
+        <div class="panel-row">
+            <div class="brand"><h1>Cờ Caro</h1></div>
+            <div class="score-box">
+                <div class="x-text">X: <span id="scoreX">0</span></div>
+                <div class="o-text">O: <span id="scoreO">0</span></div>
+            </div>
+            <div class="status" id="statusMessage">Đến lượt: <span class="x-text" style="font-family: 'Pacifico', cursive;">X</span></div>
+        </div>
+        <div class="panel-row" style="justify-content: center;">
+            <div class="controls">
+                <button class="btn-primary" onclick="resetGame()">Ván Mới</button>
+                <button onclick="resetScore()">Xóa Điểm</button>
+                <button onclick="toggleTheme()" id="themeBtn">☾ Tối</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bàn cờ cuộn tự do -->
+    <div class="board-container">
+        <div class="board" id="board"></div>
+    </div>
+
+    <script>
+        const ROWS = 25;
+        const COLS = 25;
+        const WIN_CONDITION = 5;
+
+        let boardData = [];
+        let currentPlayer = 'X';
+        let lastWinner = 'X'; 
+        let gameOver = false;
+        let scoreX = 0;
+        let scoreO = 0;
+
+        const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('statusMessage');
+        const scoreXElement = document.getElementById('scoreX');
+        const scoreOElement = document.getElementById('scoreO');
+        const themeBtn = document.getElementById('themeBtn');
+
+        function initBoard() {
+            boardElement.innerHTML = '';
+            boardData = [];
+            for (let r = 0; r < ROWS; r++) {
+                let row = [];
+                for (let c = 0; c < COLS; c++) {
+                    row.push('');
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.addEventListener('click', handleCellClick);
+                    boardElement.appendChild(cell);
+                }
+                boardData.push(row);
+            }
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
+                themeBtn.innerText = '☀ Sáng';
+            } else {
+                themeBtn.innerText = '☾ Tối';
+            }
+        }
+
+        function handleCellClick(e) {
+            if (gameOver) return;
+            const r = parseInt(e.target.dataset.row);
+            const c = parseInt(e.target.dataset.col);
+
+            if (boardData[r][c] !== '') return; 
+
+            boardData[r][c] = currentPlayer;
+            e.target.innerText = currentPlayer;
+            
+            if (currentPlayer === 'X') {
+                e.target.classList.add('x-text');
+            } else {
+                e.target.classList.add('o-text');
+            }
+
+            const winCells = checkWin(r, c, currentPlayer);
+            if (winCells) {
+                endGame(currentPlayer, winCells);
+            } else {
+                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                updateStatus();
+            }
+        }
+
+        function checkWin(r, c, player) {
+            const directions = [
+                [[0, 1], [0, -1]],  
+                [[1, 0], [-1, 0]],  
+                [[1, 1], [-1, -1]], 
+                [[1, -1], [-1, 1]]  
+            ];
+
+            for (let dir of directions) {
+                let count = 1;
+                let winningCells = [{r, c}];
+
+                for (let d of dir) {
+                    let nr = r + d[0];
+                    let nc = c + d[1];
+                    
+                    while (
+                        nr >= 0 && nr < ROWS && 
+                        nc >= 0 && nc < COLS && 
+                        boardData[nr][nc] === player
+                    ) {
+                        count++;
+                        winningCells.push({r: nr, c: nc});
+                        nr += d[0];
+                        nc += d[1];
+                    }
+                }
+                if (count >= WIN_CONDITION) return winningCells;
+            }
+            return null;
+        }
+
+        function endGame(winner, winCells) {
+            gameOver = true;
+            lastWinner = winner; 
+            
+            const colorClass = winner === 'X' ? 'x-text' : 'o-text';
+            
+            if (winner === 'X') {
+                scoreX++;
+                scoreXElement.innerText = scoreX;
+            } else {
+                scoreO++;
+                scoreOElement.innerText = scoreO;
+            }
+            
+            statusElement.innerHTML = `Thắng: <span class="${colorClass}" style="font-family: 'Pacifico', cursive;">${winner} đoạt cúp!</span>`;
+
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const r = parseInt(cell.dataset.row);
+                const c = parseInt(cell.dataset.col);
+                if (winCells.some(wc => wc.r === r && wc.c === c)) {
+                    cell.classList.add('win');
+                }
+            });
+        }
+
+        function updateStatus() {
+            const colorClass = currentPlayer === 'X' ? 'x-text' : 'o-text';
+            statusElement.innerHTML = `Đến lượt: <span class="${colorClass}" style="font-family: 'Pacifico', cursive;">${currentPlayer}</span>`;
+        }
+
+        function resetGame() {
+            gameOver = false;
+            currentPlayer = lastWinner; 
+            updateStatus();
+            initBoard();
+        }
+
+        function resetScore() {
+            scoreX = 0;
+            scoreO = 0;
+            scoreXElement.innerText = scoreX;
+            scoreOElement.innerText = scoreO;
+            lastWinner = 'X'; 
+            resetGame();
+        }
+
+        initBoard();
+        updateStatus();
+    </script>
+</body>
+</html>
